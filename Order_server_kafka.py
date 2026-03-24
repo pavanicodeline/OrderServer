@@ -33,7 +33,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from kafka import KafkaConsumer
-from OrderExecutor_redis import OrderDispatcher
+from OrderExecutor_kafka import OrderDispatcher
 import redis
 import requests
 
