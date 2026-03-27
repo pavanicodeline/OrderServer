@@ -80,12 +80,12 @@ PRODUCER = KafkaProducer(
 # REDIS
 # =====================================================
 redis_conn_str = redis.Redis(
-    host='redis-19731.crce182.ap-south-1-1.ec2.cloud.redislabs.com',
-    port=19731,
-    decode_responses=True,
-    username="default",
-    password="xJOOwytWRYTeFZUCBXAg1CAdQDzdLWKG",
-)
+                host='redis-19731.crce182.ap-south-1-1.ec2.cloud.redislabs.com',
+                port=19731,
+                decode_responses=True,
+                username="default",
+                password="xJOOwytWRYTeFZUCBXAg1CAdQDzdLWKG",
+            ) 
 
 
 def read_redis(key):
