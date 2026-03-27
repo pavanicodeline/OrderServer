@@ -30,13 +30,15 @@ Kafka Message Format (JSON):
 import csv
 import json
 import time
+import threading
+import traceback
 from datetime import datetime
 from pathlib import Path
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from OrderExecutor_kafka import OrderDispatcher
-import redis
+import redis,pandas as pd
 import requests
-
+from dateutil.parser import parse
 # =====================================================
 # CONFIG
 # =====================================================
@@ -44,10 +46,20 @@ ORDERS_DIR = Path(__file__).parent / "orders"
 
 VALID_SIGNATURE = "JarvisAlgo@123"
 
-KAFKA_BROKER = "51.20.76.226:9092"
+KAFKA_BROKER = "195.250.30.177:9092"
 TOPIC = "trading-signals"
 GROUP_ID = "order_server_group"
-
+HEARTBEAT_TOPIC = "server-heartbeat"
+ALERT_TOPIC = "alert-message"
+ALERT_PREFIX = "server-alert: "
+SERVER_START_TIME = datetime.now()
+PRODUCER = KafkaProducer(
+        bootstrap_servers=KAFKA_BROKER,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        acks='all',
+        retries=3,
+        request_timeout_ms=10000
+    )
 # =====================================================
 # REDIS
 # =====================================================
@@ -95,13 +107,67 @@ def get_users_by_ip(data, ip):
     return [user for user, value in data.items() if value == ip]
 
 
+def get_ip_from_server_mapping(account_id, broker):
+    """
+    Fetch IP from server_mapping for a given account_id and broker.
+    Returns IP string or None if not found.
+    """
+    server_mapping_data = read_redis(server_mapping_key)
+    if not server_mapping_data:
+        return None
+    
+    entries = server_mapping_data if isinstance(server_mapping_data, list) else [server_mapping_data]
+    for entry in entries:
+        if entry.get("account_id") == account_id and entry.get("broker") == broker:
+            return entry.get("ip")
+    return None
+
+
+def get_server_account_broker():
+    """
+    Get the account_id and broker for this server from server_mapping.
+    Returns (account_id, broker) or (None, None) if not found.
+    """
+    server_mapping_data = read_redis(server_mapping_key)
+    print("server_mapping_data == ",server_mapping_data)
+    if not server_mapping_data:
+        return None, None
+    
+    entries = server_mapping_data if isinstance(server_mapping_data, list) else [server_mapping_data]
+    for entry in entries:
+        print(entry.get("ip"))
+        if str(entry.get("ip")) == str(SERVER_IP):
+            return entry.get("account_id"), entry.get("broker")
+    
+    return None, None
+
+
+def send_alert(message, account_id=None, broker=None):
+    """
+    Send an alert to the ALERT_TOPIC with account_id and broker included.
+    """
+    try:
+        alert_data = {
+            "message": message,
+            "user_id": account_id,
+            "broker": broker,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        PRODUCER.send(ALERT_TOPIC, value=alert_data)
+        PRODUCER.flush(timeout=5)
+    except Exception as e:
+        print(f"[ALERT_ERROR] Failed to send alert: {e}")
+        traceback.print_exc()
+
+
 # =====================================================
 # CSV HELPERS
 # =====================================================
 ORDER_PLACEMENT_FIELDS = [
     "date", "Exc", "SymbolId", "Symbol", "Side", "OrderType",
     "ProductType", "qty", "Price", "CallBy", "PlaceOrder",
-    "StrategyName", "PClose", "InstrumentType", "OrderTag", "status", "message"
+    "StrategyName", "PClose", "InstrumentType", "OrderTag",
+    "UserTriggered","MapedIp","SourceIp", "status", "message","timestamp"
 ]
 
 
@@ -112,8 +178,8 @@ def ensure_directory():
 
 def get_order_csv_path(strategy_name: str = "all") -> Path:
     """Generate orders CSV filename as orders_{strategy}_{YYYY-MM-DD}.csv"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    return ORDERS_DIR / f"orders_{strategy_name}_{today}.csv"
+    # today = datetime.now().strftime("%Y-%m-%d")
+    return ORDERS_DIR / f"{strategy_name}.csv"
 
 
 def write_order_to_csv(row_data: dict, strategy_name: str = "all"):
@@ -122,7 +188,8 @@ def write_order_to_csv(row_data: dict, strategy_name: str = "all"):
     Creates the file with headers if it doesn't exist.
     """
     ensure_directory()
-    csv_path = get_order_csv_path(strategy_name)
+    csv_path = get_order_csv_path("OrderServerSignalHistory.csv")
+    # csv_path = get_order_csv_path(strategy_name)
     file_exists = csv_path.exists()
 
     with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
@@ -135,14 +202,152 @@ def write_order_to_csv(row_data: dict, strategy_name: str = "all"):
 # =====================================================
 # STARTUP — load mappings & init OrderDispatcher
 # =====================================================
-print(f"Public IP: {get_public_ip()}")
+SERVER_IP = get_public_ip()
+print(f"Public IP: {SERVER_IP}")
 
 strategy_mapping_key = "users:strategy:map"
 server_mapping_key = "users:server:map"
-strategy_mapping = read_redis(strategy_mapping_key)
+strategy_mapping = pd.DataFrame(read_redis(strategy_mapping_key))
 server_mapping = read_redis(server_mapping_key)
 
+# Get the account and broker configured for this server
+SERVER_ACCOUNT_ID, SERVER_BROKER = get_server_account_broker()
+print(f"[STARTUP] Server Account: {SERVER_BROKER}-{SERVER_ACCOUNT_ID}")
+
+if SERVER_ACCOUNT_ID is None or SERVER_BROKER is None:
+    print("[ERROR] This server IP is not configured in server_mapping. Exiting...")
+    exit(1)
+
 OrderManager = OrderDispatcher("logged_users", "users_details", "OrderServer", "redis")
+
+# =====================================================
+# HEARTBEAT — extract account info & detect IP conflicts
+# =====================================================
+def extract_heartbeat_accounts():
+    """
+    Read users:strategy:map from Redis.
+    - Extract unique (account_id, broker) pairs.
+    - For each pair, fetch IP from server_mapping.
+    - Filter accounts matching this server's IP (SERVER_IP).
+    - Alert if any account has conflicting IPs in server_mapping.
+    """
+    raw = read_redis(strategy_mapping_key)
+    if not raw:
+        print("[HEARTBEAT] No data found in users:strategy:map")
+        return []
+
+    strategy_entries = raw if isinstance(raw, list) else [raw]
+    server_map_data = read_redis(server_mapping_key)
+    if not server_map_data:
+        print("[HEARTBEAT] No data found in users:server:map")
+        return []
+    
+    server_entries = server_map_data if isinstance(server_map_data, list) else [server_map_data]
+
+    # Build server mapping: (account_id, broker) -> IP
+    from collections import defaultdict
+    server_ip_map = {}
+    account_ip_map = defaultdict(set)  # Track all IPs for each account_id
+    
+    for entry in server_entries:
+        acc_id = entry.get("account_id")
+        broker = entry.get("broker")
+        ip = entry.get("ip")
+        server_ip_map[(acc_id, broker)] = ip
+        account_ip_map[acc_id].add(ip)
+
+    # Extract unique (account_id, broker) pairs from strategy_mapping
+    seen = set()
+    local_accounts = []
+    for entry in strategy_entries:
+        acc_id = entry.get("account_id")
+        broker = entry.get("broker")
+        key = (acc_id, broker)
+        
+        if key not in seen:
+            seen.add(key)
+            # Get IP from server_mapping
+            ip = server_ip_map.get(key)
+            
+            if ip == SERVER_IP:
+                local_accounts.append({
+                    "account_id": acc_id,
+                    "broker": broker,
+                })
+
+    # Alert if any local account_id has multiple IPs in server_mapping
+    for acc in local_accounts:
+        ips = account_ip_map.get(acc["account_id"], set())
+        if len(ips) > 1:
+            other_ips = ips - {SERVER_IP}
+            send_alert(
+                ALERT_PREFIX + f"account_id={acc['account_id']} is mapped to other IP(s): {other_ips}",
+                acc["account_id"],
+                acc["broker"]
+            )
+            print(
+                f"⚠️  [ALERT] account_id={acc['account_id']} is mapped "
+                f"to other IP(s): {other_ips}"
+            )
+
+    # Alert if multiple accounts share the same IP
+    ip_to_accounts = defaultdict(list)
+    for entry in server_entries:
+        _ip = entry.get("ip")
+        if _ip:
+            ip_to_accounts[_ip].append(entry.get("account_id"))
+            
+    for ip, accs in ip_to_accounts.items():
+        unique_accs = list(set(accs))
+        if len(unique_accs) > 1:
+            send_alert(
+                ALERT_PREFIX + f"IP={ip} is shared by multiple accounts: {unique_accs}",
+                SERVER_ACCOUNT_ID,
+                SERVER_BROKER
+            )
+            print(
+                f"⚠️  [ALERT] IP={ip} is shared by multiple accounts: {unique_accs}"
+            )
+
+    return local_accounts
+
+
+HEARTBEAT_ACCOUNTS = extract_heartbeat_accounts()
+print(f"[HEARTBEAT] Tracking {len(HEARTBEAT_ACCOUNTS)} account(s) for IP {SERVER_IP}")
+# print("HEARTBEAT_ACCOUNTS == ",HEARTBEAT_ACCOUNTS)
+# exit(0)
+
+def heartbeat_sender(interval_minutes=1):
+    """
+    Periodically publish heartbeat messages to the server-heartbeat Kafka topic.
+    Payload: {ip, timestamp, account_id} for each unique account.
+    Args:
+        interval_minutes: How often to send heartbeats (in minutes).
+    """
+    interval_seconds = interval_minutes * 60
+
+    print(f"[HEARTBEAT] Sender started → topic: {HEARTBEAT_TOPIC} | interval: {interval_minutes} min")
+
+    while True:
+        for acc in HEARTBEAT_ACCOUNTS:
+            payload = {
+                "ip": SERVER_IP,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "account_id": acc["account_id"],
+                "broker": acc["broker"],
+            }
+            try:
+                PRODUCER.send(HEARTBEAT_TOPIC, value=payload)
+                
+            except Exception as e:
+                send_alert(
+                    ALERT_PREFIX + f"[HEARTBEAT ERROR] {e}",
+                    SERVER_ACCOUNT_ID,
+                    SERVER_BROKER
+                )
+                print(f"[HEARTBEAT ERROR] {e}")
+        PRODUCER.flush()
+        time.sleep(interval_seconds)
 
 
 # =====================================================
@@ -150,17 +355,19 @@ OrderManager = OrderDispatcher("logged_users", "users_details", "OrderServer", "
 # =====================================================
 def process_signal(signal: dict):
     """
-    Process an incoming Kafka signal the same way the old
-    POST /place-order endpoint did.
+    Process an incoming Kafka signal.
     """
-    print(f"\n[SIGNAL] Received: {signal}")
-
     # --- Required field check ---
     required = ["Exc", "SymbolId", "Symbol", "Side", "OrderType",
-                 "ProductType", "qty", "StrategyName", "Signature"]
+                "ProductType", "qty", "StrategyName", "Signature"]
     missing = [f for f in required if f not in signal]
     if missing:
-        print(f"[SKIP] Missing fields: {missing}")
+        send_alert(
+            ALERT_PREFIX + f"[SKIP] Missing fields: {missing} - {signal.get('StrategyName')} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            SERVER_ACCOUNT_ID,
+            SERVER_BROKER
+        )
+        print(f"[SKIP] Missing fields: {missing} - {signal.get("StrategyName")} - {signal.get("SymbolId")} - {signal.get("Side")}")
         return
 
     # --- Signature validation ---
@@ -170,14 +377,100 @@ def process_signal(signal: dict):
 
     # --- PlaceOrder flag ---
     if not signal.get("PlaceOrder", True):
-        print("[SKIP] PlaceOrder is False — order not placed")
+        print("[SKIP] PlaceOrder=False")
         return
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # --- Timestamp ---
+    received_timestamp = signal.get("timestamp")
+    
+    if received_timestamp:
+        received_timestamp = parse(received_timestamp)
+        if received_timestamp < SERVER_START_TIME:
+            send_alert(
+                ALERT_PREFIX + f"Received timestamp is older than server start time: {received_timestamp} - {signal.get('StrategyName')} - {signal.get('SymbolId')} - {signal.get('Side')}",
+                SERVER_ACCOUNT_ID,
+                SERVER_BROKER
+            )
+            print(f"[SKIP] Received timestamp is older than server start time: {received_timestamp} - {signal.get("StrategyName")} - {signal.get("SymbolId")} - {signal.get("Side")}")
+            return
+    else:
+       return
+    
+    # --- Strategy lookup ---
+    strategy_name = signal.get("StrategyName", "")
+    trigger_strategy = strategy_mapping[strategy_mapping["strategy"] == strategy_name]
+    if trigger_strategy.empty:
+        send_alert(
+            ALERT_PREFIX + f"Strategy not found: {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            SERVER_ACCOUNT_ID,
+            SERVER_BROKER
+        )
+        print(f"[SKIP] Strategy not found: {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
+        return
+    
+    # --- Get Server IP ---
+    try:
+        myip = get_public_ip()
+    except Exception as e:
+        send_alert(
+            ALERT_PREFIX + f"IP fetch failed: {e} - {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            SERVER_ACCOUNT_ID,
+            SERVER_BROKER
+        )
+        print(f"[ERROR] IP fetch failed: {e} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
+        return
 
-    # Build row for CSV
+    # --- Find matching strategy entry with matching IP from server_mapping ---
+    final_user = None
+    for _, row in trigger_strategy.iterrows():
+        account_id = row.get("account_id")
+        broker = row.get("broker")
+        
+        # Get IP from server_mapping
+        ip_from_server = get_ip_from_server_mapping(account_id, broker)
+        
+        if ip_from_server == myip:
+            final_user = row
+            break
+    
+    if final_user is None:
+        send_alert(
+            ALERT_PREFIX + f"No mapping for IP: {myip} | Strategy: {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            SERVER_ACCOUNT_ID,
+            SERVER_BROKER
+        )
+        print(f"[SKIP] No mapping for IP: {myip} | Strategy: {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}")
+        return
+
+    # --- Get User ---
+    qty = final_user.get("qty")
+    userid = final_user.get("account_id")
+    broker = final_user.get("broker")
+
+    # --- Validate this order is for the configured server account ---
+    if userid != SERVER_ACCOUNT_ID or broker != SERVER_BROKER:
+        send_alert(
+            ALERT_PREFIX + f"Order for different account. Expected {SERVER_BROKER}-{SERVER_ACCOUNT_ID}, got {broker}-{userid} - Strategy: {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            SERVER_ACCOUNT_ID,
+            SERVER_BROKER
+        )
+        print(f"[SKIP] Order for different account: {broker}-{userid} != {SERVER_BROKER}-{SERVER_ACCOUNT_ID}")
+        return
+
+    if qty is None:
+        send_alert(
+            ALERT_PREFIX + f"Qty missing for {broker}-{userid} - {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            userid,
+            broker
+        )
+        print(f"[SKIP] Qty missing for {broker}-{userid} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
+        return
+
+    # --- Get mapped IP from server_mapping ---
+    mapped_ip = get_ip_from_server_mapping(userid, broker)
+    
     row_data = {
-        "date": timestamp,
+        "date": received_timestamp.strftime("%Y-%m-%d"),
         "Exc": signal.get("Exc"),
         "SymbolId": signal.get("SymbolId"),
         "Symbol": signal.get("Symbol"),
@@ -192,72 +485,48 @@ def process_signal(signal: dict):
         "PClose": signal.get("PClose", 0),
         "InstrumentType": signal.get("InstrumentType", ""),
         "OrderTag": signal.get("OrderTag", ""),
+        "broker": broker,
+        "UserTriggered": userid,
+        "MapedIp": mapped_ip,
+        "SourceIp": signal.get("SourceIp", ""),
         "status": "RECEIVED",
+        "timestamp": signal.get("timestamp"),
         "message": "",
     }
-
-    # --- Strategy lookup ---
-    strategy_name = signal.get("StrategyName", "")
-    trigger_strategy = strategy_mapping.get(strategy_name)
-    if not trigger_strategy:
-        print(f"[WARN] Strategy not found: {strategy_name}")
-        return
-
-    print("trigger_strategy =", trigger_strategy)
-
-    # --- Symbol lookup ---
-    symbol = signal.get("Symbol")
-    trigger_symbol_strategy = trigger_strategy.get(symbol)
-    if not trigger_symbol_strategy:
-        print(f"[WARN] Symbol not mapped in strategy: {symbol}")
-        return
-
-    print("trigger_symbol_strategy =", trigger_symbol_strategy)
-
-    # --- Get IP ---
-    try:
-        myip = get_public_ip()
-    except Exception as e:
-        print(f"[ERROR] Failed to get IP: {e}")
-        return
-
-    print("myip =", myip)
-
-    # --- Get User ---
-    users = get_users_by_ip(server_mapping, myip)
-    if not users:
-        print(f"[WARN] No user mapped for IP: {myip}")
-        return
-
-    userid = users[0]
-    print("userid =", userid)
-
-    # --- Get Quantity ---
-    qty = trigger_symbol_strategy.get(userid)
-    if qty is None:
-        print(f"[WARN] No qty configured for user {userid}")
-        return
-
+    
+    
+    
     try:
         qty = int(qty)
-    except Exception:
-        print(f"[ERROR] Invalid qty for user {userid}: {qty}")
+    except Exception as e:
+        send_alert(
+            ALERT_PREFIX + f"Invalid qty for {broker}-{userid}: {qty} - {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            userid,
+            broker
+        )
+        print(f"[ERROR] Invalid qty for {broker}-{userid}: {qty} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
         return
 
     if qty <= 0:
-        print(f"[WARN] Qty is 0 for user {userid}")
+        send_alert(
+            ALERT_PREFIX + f"Qty=0 for {broker}-{userid} - {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            userid,
+            broker
+        )
+        print(f"[SKIP] Qty=0 for {broker}-{userid} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
         return
-
-    print("qty =", qty)
 
     # --- Transaction mapping ---
     try:
         ttype, position_type = reverse_jarvis_ttype(signal.get("Side"))
     except Exception as e:
-        print(f"[ERROR] Invalid Side: {signal.get('Side')}")
+        send_alert(
+            ALERT_PREFIX + f"Invalid Side: {signal.get('Side')} - {strategy_name} - {signal.get('SymbolId')} - {signal.get('Side')}",
+            userid,
+            broker
+        )
+        print(f"[ERROR] Invalid Side: {signal.get('Side')} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
         return
-
-    print("ttype, position_type =", ttype, position_type)
 
     # --- Place order ---
     response = OrderManager._place_order(
@@ -273,14 +542,17 @@ def process_signal(signal: dict):
         tag=signal.get("OrderTag", ""),
         strategy_name=strategy_name,
     )
-    print(f"[ORDER] {timestamp} | {signal.get('Side')} {qty} x {symbol} @ {signal.get('Price', 0)} | Strategy: {strategy_name}")
-    print("order Placed =", response)
+
+    print(
+        f"[ORDER] {received_timestamp} | {broker}-{userid} | ",
+        response
+    )
 
     # --- Write CSV ---
     strategy_key = strategy_name if strategy_name else "all"
     write_order_to_csv(row_data, strategy_key)
-
-
+    
+    
 # =====================================================
 # KAFKA CONSUMER
 # =====================================================
@@ -308,6 +580,7 @@ def start_consumer():
             process_signal(signal)
         except Exception as e:
             print(f"[ERROR] Exception while processing signal: {e}")
+            traceback.print_exc()
             time.sleep(1)
 
 
@@ -315,4 +588,8 @@ def start_consumer():
 # MAIN
 # =====================================================
 if __name__ == "__main__":
+    # Start heartbeat in a background daemon thread (interval in minutes)
+    hb_thread = threading.Thread(target=heartbeat_sender, args=(1,), daemon=True)
+    hb_thread.start()
+
     start_consumer()
