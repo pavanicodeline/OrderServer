@@ -39,6 +39,22 @@ from OrderExecutor_kafka import OrderDispatcher
 import redis,pandas as pd
 import requests
 from dateutil.parser import parse
+
+
+# =====================================================
+# STARTUP — load mappings & init OrderDispatcher
+# =====================================================
+
+def get_public_ip():
+    try:
+        return requests.get("https://api.ipify.org").text
+    except Exception as e:
+        return str(e)
+    
+    
+SERVER_IP = get_public_ip()
+print(f"Public IP: {SERVER_IP}")
+
 # =====================================================
 # CONFIG
 # =====================================================
@@ -48,7 +64,7 @@ VALID_SIGNATURE = "JarvisAlgo@123"
 
 KAFKA_BROKER = "195.250.30.177:9092"
 TOPIC = "trading-signals"
-GROUP_ID = "order_server_group"
+GROUP_ID = f"server_{SERVER_IP}"
 HEARTBEAT_TOPIC = "server-heartbeat"
 ALERT_TOPIC = "alert-message"
 ALERT_PREFIX = "server-alert: "
@@ -81,14 +97,8 @@ def read_redis(key):
 
 
 # =====================================================
-# UTILITIES
+# UTILITIES Functions
 # =====================================================
-def get_public_ip():
-    try:
-        return requests.get("https://api.ipify.org").text
-    except Exception as e:
-        return str(e)
-
 
 def reverse_jarvis_ttype(ttype):
     mapping = {
@@ -197,13 +207,6 @@ def write_order_to_csv(row_data: dict, strategy_name: str = "all"):
         if not file_exists:
             writer.writeheader()
         writer.writerow(row_data)
-
-
-# =====================================================
-# STARTUP — load mappings & init OrderDispatcher
-# =====================================================
-SERVER_IP = get_public_ip()
-print(f"Public IP: {SERVER_IP}")
 
 strategy_mapping_key = "users:strategy:map"
 server_mapping_key = "users:server:map"
