@@ -168,7 +168,7 @@ def send_alert(message, account_id=None, broker=None):
             "message": message,
             "user_id": account_id,
             "broker": broker,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
         }
         PRODUCER.send(ALERT_TOPIC, value=alert_data)
         PRODUCER.flush(timeout=5)
@@ -195,7 +195,7 @@ def ensure_directory():
 
 def get_order_csv_path(strategy_name: str = "all") -> Path:
     """Generate orders CSV filename as orders_{strategy}_{YYYY-MM-DD}.csv"""
-    # today = datetime.now().strftime("%Y-%m-%d")
+    # today = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
     return ORDERS_DIR / f"{strategy_name}.csv"
 
 
@@ -342,7 +342,7 @@ def heartbeat_sender(interval_minutes=1):
         for acc in HEARTBEAT_ACCOUNTS:
             payload = {
                 "ip": SERVER_IP,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "timestamp": datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S"),
                 "account_id": acc["account_id"],
                 "broker": acc["broker"],
             }
@@ -395,6 +395,7 @@ def process_signal(signal: dict):
     
     if received_timestamp:
         received_timestamp = parse(received_timestamp)
+        received_timestamp = received_timestamp.replace(tzinfo=ZoneInfo("Asia/Kolkata"))
         if received_timestamp < SERVER_START_TIME:
             send_alert(
                 ALERT_PREFIX + f"Received timestamp is older than server start time: {received_timestamp} - {signal.get('StrategyName')} - {signal.get('SymbolId')} - {signal.get('Side')}",
