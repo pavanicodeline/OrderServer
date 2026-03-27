@@ -3411,6 +3411,9 @@ class OrderDispatcher:
         option_type = instrument_data["Option Type"]
         instype = option_type if pd.notna(option_type) and (option_type.upper() in ["CE","PE"]) else "FUT"
         ipstat,source_ip = self.get_public_ip()
+        issquareoff = False
+        if position_type.upper() == "SQOFF":
+            issquareoff = True
         if ipstat:
             payload = {
             "Exc": exchange,
@@ -3429,7 +3432,8 @@ class OrderDispatcher:
             "InstrumentType":instype,
             "SourceIp": source_ip,
             "OrderTag": tag,
-            "timestamp":str(datetime.now(ZoneInfo("Asia/Kolkata")))
+            "timestamp":str(datetime.now(ZoneInfo("Asia/Kolkata"))),
+            "issquareoff": issquareoff,
             }
         else:
             print(f"error: Failed to get ip: {str(e)}")
@@ -4096,7 +4100,7 @@ def main():
   
     print("Order placement".center(50,"*"))
     print("Time start ",datetime.now(ZoneInfo("Asia/Kolkata")))
-    respone = OrderManager.threaded_place_order(users_ids,exchange_token,"NFO","MIS","LIMIT",transaction_type="BUY",position_type="OPEN")
+    respone = OrderManager.threaded_place_order(users_ids,exchange_token,"NFO","MIS","LIMIT",transaction_type="SELL",position_type="CLOSE")
     # print(respone)
     logging.info(f"Response: {respone}")
     print(f"Response: {respone}")
