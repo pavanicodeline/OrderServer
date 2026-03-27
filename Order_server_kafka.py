@@ -184,7 +184,7 @@ ORDER_PLACEMENT_FIELDS = [
     "date", "Exc", "SymbolId", "Symbol", "Side", "OrderType",
     "ProductType", "qty", "Price", "CallBy", "PlaceOrder",
     "StrategyName", "PClose", "InstrumentType", "OrderTag",
-    "UserTriggered","MapedIp","SourceIp", "status", "message","timestamp"
+    "UserTriggered","MapedIp","SourceIp", "status", "message","timestamp","issquareoff"
 ]
 
 
@@ -369,7 +369,7 @@ def process_signal(signal: dict):
     """
     # --- Required field check ---
     required = ["Exc", "SymbolId", "Symbol", "Side", "OrderType",
-                "ProductType", "qty", "StrategyName", "Signature"]
+                "ProductType", "qty", "StrategyName", "Signature","issquareoff"]
     missing = [f for f in required if f not in signal]
     if missing:
         send_alert(
@@ -502,6 +502,7 @@ def process_signal(signal: dict):
         "SourceIp": signal.get("SourceIp", ""),
         "status": "RECEIVED",
         "timestamp": signal.get("timestamp"),
+        "issquareoff": signal.get("issquareoff"),
         "message": "",
     }
     
@@ -539,7 +540,11 @@ def process_signal(signal: dict):
         print(f"[ERROR] Invalid Side: {signal.get('Side')} - {strategy_name} - {signal.get("SymbolId")} - {signal.get("Side")}")
         return
 
+    # ----- posotions type validate -----
+    if signal.get("issquareoff",False):
+        position_type == "SQOFF"
     # --- Place order ---
+    
     response = OrderManager._place_order(
         userid,
         signal.get("SymbolId"),
