@@ -163,7 +163,7 @@ class OrderDispatcher:
         self.notification_topic = "ordernotification"
 
         self.producer = KafkaProducer(
-            bootstrap_servers="51.20.76.226:9092",
+            bootstrap_servers="195.250.30.177:9092",
             key_serializer=lambda k: k.encode('utf-8'),
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
@@ -3386,7 +3386,14 @@ class OrderDispatcher:
         elif is_buy and is_closing: return "COVER"
         else:raise ValueError(f"ttype patterns does not match...")
         
-       
+    # =====================================================
+    # UTILITIES
+    # =====================================================
+    def get_public_ip(self):
+        try:
+            return True,requests.get("https://api.ipify.org").text
+        except Exception as e:
+            return False,str(e)   
         
     def place_kafka_order(self,instrument_data,users_ids,exchange_token:int,exchange:str,product:str,order_type:str,transaction_type:str,position_type:Literal["CLOSE","OPEN"],validity:str=None,price:float=0,trigger_price:float=0,disclosed_quantity:int=0,is_amo:bool=False,api_version:str = 'v2',variety:str="regular",tag:str=""):
         
@@ -3395,39 +3402,37 @@ class OrderDispatcher:
         _product = "NRML" if product in ["CNC","NRML"] else product
         option_type = instrument_data["Option Type"]
         instype = option_type if pd.notna(option_type) and (option_type.upper() in ["CE","PE"]) else "FUT"
-        payload = {
-        "Exc": exchange,
-        "SymbolId": instrument_data["Token"],
-        "Symbol": instrument_data["Symbol"],
-        "Side":  self.get_jarvis_ttype(transaction_type,position_type),
-        "OrderType": order_type,
-        "ProductType": _product,
-        "qty": qty,
-        "Price": price,
-        "CallBy": "PythonAlgo",
-        "PlaceOrder": True,
-        "StrategyName": self.strategy_name,
-        "PClose":price,
-        "Signature": "JarvisAlgo@123",
-        "InstrumentType":instype,
-        "OrderTag": tag,
-        }
+        ipstat,source_ip = self.get_public_ip()
+        if ipstat:
+            payload = {
+            "Exc": exchange,
+            "SymbolId": instrument_data["Token"],
+            "Symbol": instrument_data["Symbol"],
+            "Side":  self.get_jarvis_ttype(transaction_type,position_type),
+            "OrderType": order_type,
+            "ProductType": _product,
+            "qty": qty,
+            "Price": price, 
+            "CallBy": "PythonAlgo",
+            "PlaceOrder": True,
+            "StrategyName": self.strategy_name,
+            "PClose":price,
+            "Signature": "JarvisAlgo@123",
+            "InstrumentType":instype,
+            "SourceIp": source_ip,
+            "OrderTag": tag,
+            "timestamp":str(datetime.now())
+            }
+        else:
+            print(f"error: Failed to get ip: {str(e)}")
+            return False
         try:
             self.producer.send("trading-signals",key ="expiry",value = payload)
             return True
         except Exception as e:
             print(f"error: Failed to send order to kafka: {str(e)}")
             return False
-        
-        # res = requests.post(url=url_,json=payload)
-        # print("sent Order request to jarvis")
-        # if res.status_code == 200:
-        #     # print(f"Got status - {res.status_code} - {res.json()}")
-        #     return res.json()
-        # else:
-        #     print("failed to make request ",res.json())
-        #     return res.json()
-        
+      
     def threaded_place_order(self,users_ids:list,exchange_token:int,exchange:str,product:str,order_type:str,transaction_type:str,position_type:Literal["CLOSE","OPEN"],validity:str=None,price:float=0,trigger_price:float=0,disclosed_quantity:int=0,is_amo:bool=False,api_version:str = 'v2',variety:str="regular",tag:str=""):
         self.write_logs("info",f"Order Executor trigged for {exchange}:{exchange_token} to place {position_type}")
         results={
@@ -4063,12 +4068,12 @@ class OrderDispatcher:
             exit(0)
 
 def main():
-    OrderManager = OrderDispatcher(f"logged_users{datetime.now().date()}.csv","users_details.csv","STBT")
+    OrderManager = OrderDispatcher(f"logged_users{datetime.now().date()}.csv","users_details.csv","MK","redis")
     OrderManager.enable_logging = True
 
     print("Started at ",datetime.now())
 
-    exchange_token = 62384
+    exchange_token = 44465
   
     users_ids = [
     #    ( "trade_master","1805656",1),
