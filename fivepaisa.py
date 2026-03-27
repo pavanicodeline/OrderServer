@@ -56,7 +56,6 @@ class FivepaisaBroker():
         self.GENERIC_PAYLOAD = {"head":{"Key":self.user_key},"body":{}}
         self.headers = {'Content-Type': 'application/json'}
         # urls
-        # https://Openapi.5paisa.com/VendorsAPI/Service1.svc/V2/NetPositionNetWise
         self.BaseUrl = 'https://Openapi.5paisa.com/VendorsAPI/Service1.svc/'
         self.LOGIN_ROUTE = f'{self.BaseUrl}V4/LoginRequestMobileNewbyEmail'
         self.SCRIP_MASTER_ROUTE=f'{self.BaseUrl}ScripMaster/segment/All'
@@ -72,8 +71,11 @@ class FivepaisaBroker():
         self.HISTORICAL_DATA_ROUTE = "https://openapi.5paisa.com/V2/historical/"
         self.GET_REQUEST_TOKEN_ROUTE = f'{self.BaseUrl}TOTPLogin'
         self.ACCESS_TOKEN_ROUTE = f'{self.BaseUrl}GetAccessToken'
-        self.NETPOSITION_ROUTE= f'{self.BaseUrl}V2/NetPositionNetWise'
+        self.NETPOSITION_ROUTE= f'{self.BaseUrl}V4/NetPosition'
+        # self.NETPOSITION_ROUTE= f'{self.BaseUrl}V2/NetPositionNetWise'
         self.MULTIORDERMARGIN_ROUTE=f'{self.BaseUrl}MultiOrderMargin'
+        self.MARGIN_ROUTE=f'{self.BaseUrl}V4/Margin'
+        self.ORDER_WEBHOOK_ROUTE=f'{self.BaseUrl}feeds/api'
 
 # def parse_response(response):
         
@@ -87,7 +89,7 @@ class FivepaisaBroker():
             }
         reponse = self.session.post(self.GET_REQUEST_TOKEN_ROUTE,json=payload).json()
         
-        print("reponse === ",reponse)
+        # print("reponse === ",reponse)
         
         if ("body" in reponse) and reponse["body"] and ("Message" in reponse["body"]):
             if  reponse["body"]["Message"].lower() == "success":
@@ -110,10 +112,10 @@ class FivepaisaBroker():
                 "EncryKey": self.encryption_key,
                 "UserId": self.user_id
             }
-        print("payload ==== ", payload)
+        # print("payload ==== ", payload)
         
         reponse = self.session.post(self.ACCESS_TOKEN_ROUTE,json=payload).json()
-        print("reponse(json) ==== ", reponse)
+        # print("reponse(json) ==== ", reponse)
         if ("body" in reponse) and reponse["body"] and ("Message" in reponse["body"]):
             if  reponse["body"]["Message"].lower() == "success":
                 self.access_token = reponse["body"]["AccessToken"]
@@ -177,6 +179,12 @@ class FivepaisaBroker():
             raise Exception(f"only MARKET and LIMIT Order type are allowed")
         
         payload = deepcopy(self.GENERIC_PAYLOAD)
+        
+        if (product_type == "MIS"):
+            is_intraday = True
+        else:
+            is_intraday = False
+            
         payload['body'] = {
             "OrderType": transaction_type,              #/* Buy */
             "Exchange": exchange,               #/* N = NSE */
@@ -187,7 +195,7 @@ class FivepaisaBroker():
             "Qty": str(quantity),                      # /* Number of Shares */
             "StopLossPrice": str(StopLossPrice),            # /* Optional SL price */
             "DisQty": DisQty,                   # /* Optional disclosed quantity */
-            "IsIntraday": False,           #  /* true = Intraday; false = Delivery */
+            "IsIntraday": is_intraday,           #  /* true = Intraday; false = Delivery */
             "AHPlaced": "N",               # /* After market order? Y/N */
             "RemoteOrderID": order_tag   # /* Unique client reference */
         }
@@ -198,7 +206,7 @@ class FivepaisaBroker():
         response = self.session.post(self.ORDER_PLACEMENT_ROUTE,json=payload,headers=self.headers).json()
         # print("response == ", response)
         # print("response(vars) == ", vars(response))
-        print("response(json) == ", response)
+        # print("response(json) == ", response)
         if ("body" in response) and response['body']:
             return response['body'] 
         else:
@@ -213,7 +221,7 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ExchOrderID"] = order_id
         response = self.session.post(url=self.ORDER_CANCEL_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         return response
     
     def modify_order(self, order_id: str, price: str) -> bool:
@@ -223,7 +231,7 @@ class FivepaisaBroker():
         payload["body"]["ExchOrderID"] = order_id
         payload["Price"] = price
         response = self.session.post(url=self.ORDER_MODIFY_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         return response
     
 
@@ -232,7 +240,7 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
         response = self.session.post(url=self.POSITIONS_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         if ("body" in response) and response["body"] and ("TradeBookDetail" in response["body"]):
             return response["body"]["TradeBookDetail"]
         else:
@@ -242,7 +250,7 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
         response = self.session.post(url=self.NETPOSITION_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         if ("body" in response) and response["body"] and ("NetPositionDetail" in response["body"]):
             return response["body"]["NetPositionDetail"]
         else:
@@ -252,7 +260,7 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
         response = self.session.post(url=self.ORDER_BOOK_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         if ("body" in response) and response["body"] and ("OrderBookDetail" in response["body"]):
             return response["body"]["OrderBookDetail"]
         else:
@@ -262,17 +270,36 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
         response = self.session.post(url=self.ORDER_BOOK_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         if ("body" in response) and response["body"] and ("OrderBookDetail" in response["body"]):
             orderhistory = response["body"]["OrderBookDetail"]
-            return next((order for order in orderhistory if (int(order.get("BrokerOrderId")) == int(order_id))), {})
+
+            order_id = int(order_id)
+
+            # Try Exchange Order ID first
+            order = next(
+                (o for o in orderhistory if str(o.get("ExchOrderID", "")).isdigit() and int(o["ExchOrderID"]) == order_id),
+                None
+            )
+
+            # If not found, try Broker Order ID
+            if order is None:
+                order = next(
+                    (o for o in orderhistory if str(o.get("BrokerOrderId", "")).isdigit() and int(o["BrokerOrderId"]) == order_id),
+                    None
+                )
+
+            return order or {}
+            # return next((order for order in orderhistory if (int(order.get("BrokerOrderId")) == int(order_id))), {})
         else:
             return response
    
     def get_account_balance(self) -> Dict[str, float]:
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
-        response = self.session.post(url=self.MULTIORDERMARGIN_ROUTE,json=payload).json()
+        payload["body"]["ClientCode"] = self.client_code
+        response = self.session.post(url=self.MULTIORDERMARGIN_ROUTE,json=payload,headers=self.headers).json()
+        print("response = = ",response)
         if ("body" in response) and response['body']:
             return response['body']
         else:
@@ -284,7 +311,7 @@ class FivepaisaBroker():
         payload["body"]["OrdStatusReqList"] = [{"Exch":exch,"RemoteOrderID":order_id}]
         
         response = self.session.post(url=self.ORDER_STATUS_ROUTE,json=payload,headers=self.headers).json()
-        print(response)
+        # print(response)
         if ("body" in response) and response['body'] and ("OrdStatusResLst" in response['body']):
             return response['body']['OrdStatusResLst']
         else:
@@ -295,7 +322,7 @@ class FivepaisaBroker():
         payload = deepcopy(self.GENERIC_PAYLOAD)
         payload["body"]["ClientCode"] = self.client_code
         response = self.session.post(url=self.HOLDINGS_ROUTE,json=payload,headers=self.headers).json()
-        print("response == ", response)
+        # print("response == ", response)
         if ("body" in response) and response["body"] and ("Data" in response["body"]):
             return response["body"]["Data"]
         else:
@@ -314,24 +341,7 @@ if __name__ == "__main__":
     "totp_key": "GU3DSOBYGE2TGXZVKBDUWRKZ",
     "app_name": "ORDERMED"
     }
-    
-    class_parms = {
-            "user_id": "56HFxuC3fTo",
-            "user_key": "Qs5AJHSSfqp7KPWvBbQyOxAeI6sYtaMx",
-            "app_password": "VP4kUkMPSbx",
-            "encryption_key": "mthyYjzc1HYBC2rRyfQsGi7wjvyAEz3o",
-            "client_code": "53436652",
-            "pin": "142536",
-            "totp_key": "GUZTIMZWGY2TEXZVKBDUWRKZ",
-            "app_name": "IDK",
-            "redirect_url" :"https://www.google.com/",
-            }
-
-    
     fpai = FivepaisaBroker(**class_parms)
     fpai.authenticate()
-    # fpai.SSLContext = None
-    fpai.session = None
-    print(dill.dumps(fpai))
-    # print(fpai.get_netwise_positions())
-    # print(vars(fpai))
+    
+    print(vars(fpai))
