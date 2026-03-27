@@ -953,7 +953,7 @@ class OrderDispatcher:
                     )
                     filtered_records = order_records[
                         (order_records["order_status"] == True) &
-                        (order_records["strategy"] == self.strategy_name) &
+                        (order_records["strategy"] == strategy_name) &
                         (order_records["exchange_token"].astype("int64") == int(exchange_token)) &
                         (order_records["user_id"].astype(str).str.replace(".0", "") == str(user_id).replace(".0", "")) &
                         (order_records["broker"] == user_data["broker"]) &
