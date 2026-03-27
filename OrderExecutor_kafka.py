@@ -39,6 +39,7 @@ import threading
 import queue
 from MOFSLOPENAPI import MOFSLOPENAPI
 import base64
+from zoneinfo import ZoneInfo
 os.makedirs("ORDERS/LOCK",exist_ok=True)
 os.makedirs("ORDERS/logs",exist_ok=True)
 os.makedirs("ORDERS/OLD_RECORD",exist_ok=True)
@@ -174,12 +175,19 @@ class OrderDispatcher:
         ]
         self.redis_folder_key = "users:"
         self.redis_conn_str =   redis.Redis(
-                            host='redis-11429.crce179.ap-south-1-1.ec2.cloud.redislabs.com',
-                            port=11429,
-                            decode_responses=True,
-                            username="default",
-                            password="IKomAGomiMlxqLJbZxsL1SAsv59ZBB3H",
-                        )
+                host='redis-11429.crce179.ap-south-1-1.ec2.cloud.redislabs.com',
+                port=11429,
+                decode_responses=True,
+                username="default",
+                password="IKomAGomiMlxqLJbZxsL1SAsv59ZBB3H",
+            )
+        # self.redis_conn_str =   redis.Redis(
+        #         host='redis-19731.crce182.ap-south-1-1.ec2.cloud.redislabs.com',
+        #         port=19731,
+        #         decode_responses=True,
+        #         username="default",
+        #         password="xJOOwytWRYTeFZUCBXAg1CAdQDzdLWKG",
+        #     ) 
         
         
         # logged users , userdetails & merged users = [loggedusers + userdetails]
@@ -223,13 +231,13 @@ class OrderDispatcher:
         
         # -------=* Datafeed paths *=-------
         self.datafeed_path = {
-            "MIDCPNIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/midniftydata{datetime.now().date()}.txt",
-            "NIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/niftydata{datetime.now().date()}.txt",
-            "BANKNIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/midniftydata{datetime.now().date()}.txt",
-            "MCX":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now().date()}.txt",
-            "STOCKS":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now().date()}.txt",
-            "STOCKS_OPTIONS":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now().date()}.txt",
-            "SENSEX":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/scripts/Angel/DF/angel_sensexdata{datetime.now().date()}.txt",
+            "MIDCPNIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/midniftydata{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "NIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/niftydata{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "BANKNIFTY":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/NBSE/midniftydata{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "MCX":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "STOCKS":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "STOCKS_OPTIONS":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/feed_files/MCX/futures_data{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
+            "SENSEX":f"/Users/harindersahu/Desktop/Sai_krishna/mytasks/Datafeeds/scripts/Angel/DF/angel_sensexdata{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.txt",
             }
         
         # -------=* Datafeed cols *=-------
@@ -250,7 +258,7 @@ class OrderDispatcher:
         self.order_retry = 3 # retry if order id is not recived
         
         # -------=* Master vars *=-------
-        self._date = str(datetime.now().date())
+        self._date = str(datetime.now(ZoneInfo("Asia/Kolkata")).date())
         
         # -------=* Limit Order vars *=-------
         self.limit_price_diff_percent = 15
@@ -268,7 +276,7 @@ class OrderDispatcher:
             self.maintain_records = True
             self.strategy_name = strategy_name
             self.instance_id = f"{self.strategy_name}"  # Unique identifier per process
-            self.Old_file_path = os.path.join(self.working_dir,"ORDERS","OLD_RECORD",f"{self.strategy_name}{datetime.now().date()}.csv")
+            self.Old_file_path = os.path.join(self.working_dir,"ORDERS","OLD_RECORD",f"{self.strategy_name}{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.csv")
             self.file_path = os.path.join(self.working_dir,"ORDERS",f"{self.strategy_name}.csv")
             self.lock_path = os.path.join(self.working_dir,"ORDERS","LOCK",f"{self.strategy_name}.lock")
             # self.telegram_chatid = "-5157337118"
@@ -502,7 +510,7 @@ class OrderDispatcher:
             "systemName": self.username,
             "messageType": messageType,
             "referenceId": self.strategy_name,
-            "timestamp": f"{datetime.now()}",
+            "timestamp": f"{datetime.now(ZoneInfo("Asia/Kolkata"))}",
             "messageDetails": messageDetails,
             "currentStatus": "NA"
             }
@@ -521,7 +529,7 @@ class OrderDispatcher:
                     f"<b>OrderExecutor</b>\n"
                     f"<b>{messageType}</b>\n\n"
                     f"<b>Reference ID:</b> {self.strategy_name}\n"
-                    f"<b>Timestamp:</b> {datetime.now()}\n"
+                    f"<b>Timestamp:</b> {datetime.now(ZoneInfo("Asia/Kolkata"))}\n"
                     f"<b>Message Details:</b> {messageDetails}\n"
                     f"<b>Current Status:</b> NA"
                 ),
@@ -858,7 +866,7 @@ class OrderDispatcher:
         product = product.upper()
         order_type = order_type.upper()
         transaction_type = transaction_type.upper()
-        tag = strategy_name[0]+ tag[:18] if tag else str(datetime.now())[:18]
+        tag = strategy_name[0]+ tag[:18] if tag else str(datetime.now(ZoneInfo("Asia/Kolkata")))[:18]
         
         response = {user_id: {"result": [], "summary": {"total_qty": quantity, "traded_qty": 0, "failed_qty": 0}}}
         formated_qty = -quantity if transaction_type == "SELL" else quantity
@@ -871,7 +879,7 @@ class OrderDispatcher:
         if not instrument_item:
             response_message = f"invalid_exchange_token {exchange_token}"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{None},{user_id},{exchange},{exchange_token},,,{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{None},{user_id},{exchange},{exchange_token},,,{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
 
@@ -886,7 +894,7 @@ class OrderDispatcher:
         if user_data.empty:
             response_message = f"invalid_user_id {user_id}"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{None},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{None},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
 
@@ -896,7 +904,7 @@ class OrderDispatcher:
         else:
             response_message = f"invalid_position_type {position_type}"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},,,{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},,,{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
 
@@ -934,7 +942,7 @@ class OrderDispatcher:
         if pd.isna(user_data["session_token"]):
             response_message = f"session_token_not_generated {user_id}"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED","Failed to place order as session token not generated",self.strategy_name)
 
@@ -963,7 +971,7 @@ class OrderDispatcher:
                     if filtered_records.empty:
                         response_message = f"No active position records for {TradingSymbol}"
                         self.write_logs("warning", f"[_place_order] {response_message}")
-                        record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+                        record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
                         self.safe_append(record)
                         self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED",response_message,self.strategy_name)
                         return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
@@ -972,14 +980,14 @@ class OrderDispatcher:
                         if (final_qty < 0 and transaction_type == "SELL") or (final_qty > 0 and transaction_type == "BUY"):
                             response_message = f"Cannot close position: existing qty {final_qty} same side as {transaction_type}"
                             self.write_logs("error", f"[_place_order] {response_message}")
-                            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+                            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
                             self.safe_append(record)
                             self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED",response_message,self.strategy_name)
                             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
                         elif final_qty == 0:
                             response_message = "0 Quantity available to close"
                             self.write_logs("warning", f"[_place_order] {response_message}")
-                            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+                            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
                             self.safe_append(record)
                             self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED",response_message,self.strategy_name)
                             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
@@ -996,7 +1004,7 @@ class OrderDispatcher:
         if not api_instance:
             response_message = "Failed to initialize broker instance"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED",response_message,self.strategy_name)
             self.close_order_execptions(position_type, user_data["broker"], user_id, response_message, f"(Symbol - {TradingSymbol} ** Side - {transaction_type} ** Product - {product})")
@@ -1044,7 +1052,7 @@ class OrderDispatcher:
         else:
             response_message = f"no_broker_matched_for_{broker_name}"
             self.write_logs("error", f"[_place_order] {response_message}")
-            record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
+            record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{False},{None},{formated_qty},{0},{response_message},{tag}"
             self.safe_append(record)
             self.get_notification_payload(self.notification_topic,user_id,user_data['broker'],TradingSymbol,quantity,exchange,product,transaction_type,"FAILED",response_message,self.strategy_name)
             return self.internal_ord_res(response, user_id, None, "FAILED", 0, response_message, None)
@@ -1101,7 +1109,7 @@ class OrderDispatcher:
                 str_order_message = str_order_message.replace(",", "_") if str_order_message else ""
                 total_qty_w = -quantity if transaction_type == "SELL" else quantity
                 traded_qty_w = -response[user_id]['summary']['traded_qty'] if transaction_type == "SELL" else response[user_id]['summary']['traded_qty']
-                record = f"{datetime.now()},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{success_placed},{str_order_ids},{total_qty_w},{traded_qty_w},{str_order_message},{tag}"
+                record = f"{datetime.now(ZoneInfo("Asia/Kolkata"))},{strategy_name},{user_data['broker']},{user_id},{exchange},{exchange_token},{Symbol},{TradingSymbol},{position_type.upper()},{product},{transaction_type},{success_placed},{str_order_ids},{total_qty_w},{traded_qty_w},{str_order_message},{tag}"
                 self.safe_append(record)
         
         if not success_placed:
@@ -2853,7 +2861,7 @@ class OrderDispatcher:
                     "newprice":price,
                     "newtriggerprice":0,
                     "newgoodtilldate": 0,
-                    "lastmodifiedtime": str(datetime.now()),
+                    "lastmodifiedtime": str(datetime.now(ZoneInfo("Asia/Kolkata"))),
                     "qtytradedtoday": 0
                 }
                 self.write_logs("info", f"_modify_mo_order - account_id: {account_id} - payload {payload}")
@@ -3421,7 +3429,7 @@ class OrderDispatcher:
             "InstrumentType":instype,
             "SourceIp": source_ip,
             "OrderTag": tag,
-            "timestamp":str(datetime.now())
+            "timestamp":str(datetime.now(ZoneInfo("Asia/Kolkata")))
             }
         else:
             print(f"error: Failed to get ip: {str(e)}")
@@ -3473,7 +3481,7 @@ class OrderDispatcher:
                             "message": str(e),
                             "account_id": account_id,
                             "broker": broker,
-                            "timestamp": str(datetime.now())
+                            "timestamp": str(datetime.now(ZoneInfo("Asia/Kolkata")))
                         })
 
                 for broker_name, account_id, future in futures:
@@ -3486,7 +3494,7 @@ class OrderDispatcher:
                             "error": str(e),
                             "account_id": account_id,
                             "broker": broker_name,
-                            "timestamp": str(datetime.now())
+                            "timestamp": str(datetime.now(ZoneInfo("Asia/Kolkata")))
                         })
 
             self.write_logs("info", f"[_threaded_place_order] Processed {len(users_ids)} orders")
@@ -4068,12 +4076,12 @@ class OrderDispatcher:
             exit(0)
 
 def main():
-    OrderManager = OrderDispatcher(f"logged_users{datetime.now().date()}.csv","users_details.csv","MK","redis")
+    OrderManager = OrderDispatcher(f"logged_users{datetime.now(ZoneInfo("Asia/Kolkata")).date()}.csv","users_details.csv","test","redis")
     OrderManager.enable_logging = True
 
-    print("Started at ",datetime.now())
+    print("Started at ",datetime.now(ZoneInfo("Asia/Kolkata")))
 
-    exchange_token = 44465
+    exchange_token = 62926
   
     users_ids = [
     #    ( "trade_master","1805656",1),
@@ -4087,14 +4095,14 @@ def main():
     ]
   
     print("Order placement".center(50,"*"))
-    print("Time start ",datetime.now())
-    respone = OrderManager.threaded_place_order(users_ids,exchange_token,"NFO","CNC","LIMIT",transaction_type="BUY",position_type="OPEN")
+    print("Time start ",datetime.now(ZoneInfo("Asia/Kolkata")))
+    respone = OrderManager.threaded_place_order(users_ids,exchange_token,"NFO","MIS","LIMIT",transaction_type="BUY",position_type="OPEN")
     # print(respone)
     logging.info(f"Response: {respone}")
     print(f"Response: {respone}")
-    logging.info(f"Time end {datetime.now()}")
+    logging.info(f"Time end {datetime.now(ZoneInfo("Asia/Kolkata"))}")
     print("".center(50,"*"))
-    print("Time end ",datetime.now())
+    print("Time end ",datetime.now(ZoneInfo("Asia/Kolkata")))
     time.sleep(10)
 
 if __name__ == "__main__":
