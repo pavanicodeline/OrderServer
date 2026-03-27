@@ -39,7 +39,7 @@ from OrderExecutor_kafka import OrderDispatcher
 import redis,pandas as pd
 import requests
 from dateutil.parser import parse
-
+from zoneinfo import ZoneInfo
 
 # =====================================================
 # STARTUP — load mappings & init OrderDispatcher
@@ -68,7 +68,7 @@ GROUP_ID = f"server_{SERVER_IP}"
 HEARTBEAT_TOPIC = "server-heartbeat"
 ALERT_TOPIC = "alert-message"
 ALERT_PREFIX = "server-alert: "
-SERVER_START_TIME = datetime.now()
+SERVER_START_TIME = datetime.now(ZoneInfo("Asia/Kolkata"))
 PRODUCER = KafkaProducer(
         bootstrap_servers=KAFKA_BROKER,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -86,6 +86,13 @@ redis_conn_str = redis.Redis(
     username="default",
     password="IKomAGomiMlxqLJbZxsL1SAsv59ZBB3H",
 )
+# redis_conn_str = redis.Redis(
+#     host='redis-19731.crce182.ap-south-1-1.ec2.cloud.redislabs.com',
+#     port=19731,
+#     decode_responses=True,
+#     username="default",
+#     password="xJOOwytWRYTeFZUCBXAg1CAdQDzdLWKG",
+# )
 
 
 def read_redis(key):
