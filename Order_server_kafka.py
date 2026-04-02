@@ -62,7 +62,7 @@ ORDERS_DIR = Path(__file__).parent / "orders"
 
 VALID_SIGNATURE = "JarvisAlgo@123"
 
-KAFKA_BROKER = "195.250.30.177:9092"
+KAFKA_BROKER = "98.70.53.180:9092"
 TOPIC = "trading-signals"
 GROUP_ID = f"server_{SERVER_IP}"
 HEARTBEAT_TOPIC = "server-heartbeat"
